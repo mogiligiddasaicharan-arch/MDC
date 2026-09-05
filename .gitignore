@@ -4,3 +4,17 @@ outputs/
 __pycache__/
 *.pyc
 *.pth
+dataset/
+datasets/
+raw_neu/
+raw_severstal/
+raw_casting/
+raw_magnetic/
+raw_pcb/
+raw_fabric/
+test_download/
+checkpoints/
+outputs/
+__pycache__/
+*.pyc
+*.pth
