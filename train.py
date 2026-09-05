@@ -1,17 +1,21 @@
-"""
-Train MSA-Net on the manufacturing defect dataset.
+"""Train MSA-Net on any manufacturing defect dataset.
 
 Usage:
-    python train.py
+    python train.py --domain steel
+    python train.py --domain steel --epochs 30 --batch_size 16 --lr 5e-5
 """
 
 import os
+import sys
+import argparse
 import time
 import json
 import random
 import numpy as np
 import torch
 import torch.nn as nn
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
@@ -29,20 +33,16 @@ def set_seed(seed):
 
 def run_epoch(model, loader, criterion, optimizer, device, train=True):
     model.train() if train else model.eval()
-
     total_loss, total_correct, total_samples = 0.0, 0, 0
     context = torch.enable_grad() if train else torch.no_grad()
 
     with context:
         for images, labels in loader:
             images, labels = images.to(device), labels.to(device)
-
             if train:
                 optimizer.zero_grad()
-
             outputs = model(images)
             loss = criterion(outputs, labels)
-
             if train:
                 loss.backward()
                 optimizer.step()
@@ -59,7 +59,6 @@ def run_epoch(model, loader, criterion, optimizer, device, train=True):
 
 def plot_curves(history, save_path):
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-
     axes[0].plot(history["train_loss"], label="Train Loss")
     axes[0].plot(history["val_loss"], label="Val Loss")
     axes[0].set_xlabel("Epoch")
@@ -83,31 +82,62 @@ def plot_curves(history, save_path):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Train MSA-Net specialist model")
+    parser.add_argument("--domain", type=str, required=True,
+                        help="Domain name (must match a folder under datasets/)")
+    parser.add_argument("--epochs", type=int, default=config.EPOCHS,
+                        help=f"Number of epochs (default: {config.EPOCHS})")
+    parser.add_argument("--batch_size", type=int, default=config.BATCH_SIZE,
+                        help=f"Batch size (default: {config.BATCH_SIZE})")
+    parser.add_argument("--lr", type=float, default=config.LR,
+                        help=f"Learning rate (default: {config.LR})")
+    parser.add_argument("--num_workers", type=int, default=config.NUM_WORKERS,
+                        help=f"DataLoader workers (default: {config.NUM_WORKERS})")
+    parser.add_argument("--base_channels", type=int, default=config.BASE_CHANNELS,
+                        help=f"Base channels for MSA-Net (default: {config.BASE_CHANNELS})")
+    args = parser.parse_args()
+
+    data_dir = os.path.join("datasets", args.domain)
+    if not os.path.isdir(data_dir):
+        print(f"ERROR: Dataset folder not found: {data_dir}")
+        sys.exit(1)
+
+    ckpt_dir = os.path.join("checkpoints", args.domain)
+    out_dir = os.path.join("outputs", args.domain)
+    os.makedirs(ckpt_dir, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
+
+    best_model_path = os.path.join(ckpt_dir, "best_model.pth")
+
     set_seed(config.SEED)
     device = config.DEVICE
     print(f"Using device: {device}")
+    print(f"Training domain: {args.domain} | Data: {data_dir}")
+    print(f"Epochs: {args.epochs} | Batch: {args.batch_size} | LR: {args.lr} | Base channels: {args.base_channels}")
 
-    train_loader, val_loader, test_loader, class_names = get_dataloaders()
+    train_loader, val_loader, test_loader, class_names = get_dataloaders(
+        data_dir=data_dir,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+    )
     num_classes = len(class_names)
     print(f"Detected {num_classes} classes: {class_names}")
 
-    # Persist class order so evaluate.py / predict.py stay consistent
-    with open(os.path.join(config.CHECKPOINT_DIR, "class_names.json"), "w") as f:
+    with open(os.path.join(ckpt_dir, "class_names.json"), "w") as f:
         json.dump(class_names, f)
 
-    model = MSANet(num_classes=num_classes,
-                    base_channels=config.BASE_CHANNELS).to(device)
+    model = MSANet(num_classes=num_classes, base_channels=args.base_channels).to(device)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=config.LABEL_SMOOTHING)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LR,
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr,
                                     weight_decay=config.WEIGHT_DECAY)
-    scheduler = CosineAnnealingLR(optimizer, T_max=config.EPOCHS)
+    scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
     best_val_acc = 0.0
     epochs_without_improvement = 0
 
-    for epoch in range(1, config.EPOCHS + 1):
+    for epoch in range(1, args.epochs + 1):
         start = time.time()
 
         train_loss, train_acc = run_epoch(
@@ -124,7 +154,7 @@ def main():
         history["val_acc"].append(val_acc)
 
         elapsed = time.time() - start
-        print(f"Epoch {epoch:03d}/{config.EPOCHS} | "
+        print(f"Epoch {epoch:03d}/{args.epochs} | "
               f"Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | "
               f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f} | "
               f"LR: {scheduler.get_last_lr()[0]:.6f} | {elapsed:.1f}s")
@@ -137,7 +167,7 @@ def main():
                 "class_names": class_names,
                 "val_acc": val_acc,
                 "epoch": epoch,
-            }, config.BEST_MODEL_PATH)
+            }, best_model_path)
             print(f"  -> New best model saved (val_acc={val_acc:.4f})")
         else:
             epochs_without_improvement += 1
@@ -147,9 +177,9 @@ def main():
                   f"(no improvement for {config.EARLY_STOP_PATIENCE} epochs).")
             break
 
-    plot_curves(history, os.path.join(config.OUTPUT_DIR, "training_curves.png"))
+    plot_curves(history, os.path.join(out_dir, "training_curves.png"))
     print(f"\nTraining complete. Best validation accuracy: {best_val_acc:.4f}")
-    print(f"Best model saved at: {config.BEST_MODEL_PATH}")
+    print(f"Best model saved at: {best_model_path}")
 
 
 if __name__ == "__main__":

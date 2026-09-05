@@ -1,13 +1,10 @@
-"""
-Central configuration for the Manufacturing Defect Classification project.
-Edit values here rather than scattering magic numbers through the codebase.
-"""
+﻿"""Central configuration for the Manufacturing Defect Classification project."""
 
 import os
 import torch
 
 # ---------------- Paths ----------------
-DATA_DIR = "dataset"          # expects DATA_DIR/train, /val, /test
+DATA_DIR = "datasets/steel"
 CHECKPOINT_DIR = "checkpoints"
 OUTPUT_DIR = "outputs"
 BEST_MODEL_PATH = os.path.join(CHECKPOINT_DIR, "best_model.pth")
@@ -18,16 +15,14 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # ---------------- Data ----------------
 IMG_SIZE = 224
 BATCH_SIZE = 32
-NUM_WORKERS = 2               # set to 0 on Windows if you hit multiprocessing errors
+NUM_WORKERS = 2
 
-# If your dataset is grayscale (like NEU-CLS), we still load as 3-channel
-# (replicated) so pretrained-style normalization stays consistent.
 NORM_MEAN = [0.485, 0.456, 0.406]
 NORM_STD = [0.229, 0.224, 0.225]
 
 # ---------------- Model ----------------
-NUM_CLASSES = None            # auto-detected from dataset folder at runtime
-BASE_CHANNELS = 32            # width of first MSA block; doubles each stage
+NUM_CLASSES = None
+BASE_CHANNELS = 32
 
 # ---------------- Training ----------------
 EPOCHS = 60
