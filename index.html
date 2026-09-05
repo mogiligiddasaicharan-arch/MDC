@@ -1,125 +1,78 @@
-<!DOCTYPE html>
-<html lang="en">
+﻿<!DOCTYPE html>
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manufacturing Defect Classifier</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 40px 20px; }
-        .container { max-width: 900px; margin: 0 auto; }
-        h1 { text-align: center; font-size: 2rem; margin-bottom: 8px; color: #60a5fa; }
-        .subtitle { text-align: center; color: #94a3b8; margin-bottom: 32px; }
-        .upload-zone { border: 2px dashed #3b82f6; border-radius: 16px; padding: 48px 24px; text-align: center; cursor: pointer; transition: all 0.2s; background: #1e293b; }
-        .upload-zone:hover { border-color: #60a5fa; }
-        .upload-zone.dragover { border-color: #22c55e; background: #0f291e; }
-        .upload-zone input { display: none; }
-        .upload-icon { font-size: 48px; margin-bottom: 12px; }
-        .upload-text { font-size: 1.1rem; color: #cbd5e1; }
-        .upload-hint { font-size: 0.85rem; color: #64748b; margin-top: 8px; }
-        .preview { margin-top: 24px; text-align: center; display: none; }
-        .preview img { max-width: 100%; max-height: 400px; border-radius: 12px; border: 1px solid #334155; }
-        .result { margin-top: 24px; display: none; }
-        .result-card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
-        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-        .result-item { background: #0f172a; padding: 16px; border-radius: 8px; }
-        .result-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 4px; }
-        .result-value { font-size: 1.25rem; font-weight: 600; color: #f8fafc; }
-        .result-confidence { font-size: 0.9rem; color: #22c55e; margin-top: 4px; }
-        .probabilities { margin-top: 16px; }
-        .prob-title { font-size: 0.85rem; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-        .prob-bar { display: flex; align-items: center; margin-bottom: 6px; }
-        .prob-name { width: 120px; font-size: 0.8rem; color: #cbd5e1; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
-        .prob-track { flex: 1; height: 20px; background: #0f172a; border-radius: 4px; overflow: hidden; margin: 0 8px; }
-        .prob-fill { height: 100%; background: #3b82f6; border-radius: 4px; transition: width 0.5s ease; }
-        .prob-value { width: 50px; font-size: 0.75rem; color: #94a3b8; text-align: right; }
-        .gradcam-section { margin-top: 16px; }
-        .gradcam-section img { max-width: 100%; border-radius: 8px; border: 1px solid #334155; }
-        .loading { text-align: center; padding: 24px; display: none; }
-        .spinner { width: 40px; height: 40px; border: 3px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .error { background: #450a0a; color: #fca5a5; padding: 16px; border-radius: 8px; margin-top: 16px; display: none; border: 1px solid #7f1d1d; }
-        @media (max-width: 600px) { .result-grid { grid-template-columns: 1fr; } }
-    </style>
+  <title>Manufacturing Defect Classifier</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
+    #dropzone { border: 2px dashed #888; padding: 40px; text-align: center; cursor: pointer; border-radius: 8px; }
+    #dropzone.hover { background: #f0f0f0; }
+    #preview { max-width: 300px; margin-top: 20px; display: none; }
+    #result { margin-top: 20px; padding: 15px; border-radius: 8px; display: none; }
+    #result.ok { background: #e6ffed; border: 1px solid #2ea44f; }
+    #result.warn { background: #fff8e6; border: 1px solid #d4a72c; }
+    #gradcam { max-width: 300px; margin-top: 10px; display: none; }
+    #loading { display: none; margin-top: 20px; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Manufacturing Defect Classifier</h1>
-        <p class="subtitle">Upload any manufacturing surface image — we will auto-detect the domain and classify the defect</p>
-        <div class="upload-zone" id="uploadZone">
-            <input type="file" id="fileInput" accept="image/*">
-            <div class="upload-icon">&#128194;</div>
-            <div class="upload-text">Click or drag & drop an image here</div>
-            <div class="upload-hint">Supports JPG, PNG, BMP, WebP</div>
-        </div>
-        <div class="preview" id="preview"><img id="previewImg" src="" alt="Preview"></div>
-        <div class="loading" id="loading"><div class="spinner"></div><p>Analyzing image...</p></div>
-        <div class="error" id="error"></div>
-        <div class="result" id="result">
-            <div class="result-card">
-                <div class="result-grid">
-                    <div class="result-item">
-                        <div class="result-label">Predicted Domain</div>
-                        <div class="result-value" id="domainValue">-</div>
-                        <div class="result-confidence" id="domainConf">-</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">Predicted Defect</div>
-                        <div class="result-value" id="defectValue">-</div>
-                        <div class="result-confidence" id="defectConf">-</div>
-                    </div>
-                </div>
-                <div class="probabilities"><div class="prob-title">Domain Probabilities</div><div id="domainProbs"></div></div>
-                <div class="probabilities"><div class="prob-title">Defect Probabilities</div><div id="defectProbs"></div></div>
-                <div class="gradcam-section"><div class="prob-title">Grad-CAM Heatmap</div><img id="gradcamImg" src="" alt="Grad-CAM"></div>
-            </div>
-        </div>
-    </div>
-    <script>
-        const uploadZone = document.getElementById('uploadZone');
-        const fileInput = document.getElementById('fileInput');
-        const preview = document.getElementById('preview');
-        const previewImg = document.getElementById('previewImg');
-        const loading = document.getElementById('loading');
-        const result = document.getElementById('result');
-        const error = document.getElementById('error');
-        uploadZone.addEventListener('click', () => fileInput.click());
-        uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('dragover'); });
-        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
-        uploadZone.addEventListener('drop', (e) => { e.preventDefault(); uploadZone.classList.remove('dragover'); if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
-        fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
-        function handleFile(file) {
-            if (!file.type.startsWith('image/')) { showError('Please upload an image file.'); return; }
-            const reader = new FileReader();
-            reader.onload = (e) => { previewImg.src = e.target.result; preview.style.display = 'block'; };
-            reader.readAsDataURL(file);
-            result.style.display = 'none'; error.style.display = 'none'; loading.style.display = 'block';
-            const formData = new FormData(); formData.append('file', file);
-            fetch('/predict', { method: 'POST', body: formData })
-                .then(res => { if (!res.ok) throw new Error('Prediction failed: ' + res.statusText); return res.json(); })
-                .then(data => { loading.style.display = 'none'; displayResult(data); })
-                .catch(err => { loading.style.display = 'none'; showError(err.message); });
-        }
-        function displayResult(data) {
-            document.getElementById('domainValue').textContent = data.domain;
-            document.getElementById('domainConf').textContent = (data.domain_confidence * 100).toFixed(1) + '% confidence';
-            document.getElementById('defectValue').textContent = data.defect;
-            document.getElementById('defectConf').textContent = (data.defect_confidence * 100).toFixed(1) + '% confidence';
-            const domainProbsDiv = document.getElementById('domainProbs'); domainProbsDiv.innerHTML = '';
-            Object.entries(data.domain_probabilities).sort((a,b) => b[1]-a[1]).forEach(([name,prob]) => domainProbsDiv.appendChild(createProbBar(name,prob)));
-            const defectProbsDiv = document.getElementById('defectProbs'); defectProbsDiv.innerHTML = '';
-            Object.entries(data.defect_probabilities).sort((a,b) => b[1]-a[1]).forEach(([name,prob]) => defectProbsDiv.appendChild(createProbBar(name,prob)));
-            const gradcamImg = document.getElementById('gradcamImg');
-            if (data.gradcam_base64) { gradcamImg.src = 'data:image/png;base64,' + data.gradcam_base64; gradcamImg.style.display = 'block'; }
-            else { gradcamImg.style.display = 'none'; }
-            result.style.display = 'block';
-        }
-        function createProbBar(name, prob) {
-            const div = document.createElement('div'); div.className = 'prob-bar';
-            div.innerHTML = '<div class="prob-name" title="' + name + '">' + name + '</div><div class="prob-track"><div class="prob-fill" style="width:' + (prob*100) + '%"></div></div><div class="prob-value">' + (prob*100).toFixed(1) + '%</div>';
-            return div;
-        }
-        function showError(msg) { error.textContent = msg; error.style.display = 'block'; }
-    </script>
+  <h1>Manufacturing Defect Classifier</h1>
+  <div id="dropzone">Click or drag an image here</div>
+  <input type="file" id="fileInput" accept="image/*" style="display:none">
+  <img id="preview">
+  <div id="loading">Predicting...</div>
+  <div id="result"></div>
+  <img id="gradcam">
+  <script>
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("fileInput");
+    const preview = document.getElementById("preview");
+    const resultDiv = document.getElementById("result");
+    const gradcam = document.getElementById("gradcam");
+    const loading = document.getElementById("loading");
+
+    dropzone.onclick = () => fileInput.click();
+    dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add("hover"); };
+    dropzone.ondragleave = () => dropzone.classList.remove("hover");
+    dropzone.ondrop = (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("hover");
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    };
+    fileInput.onchange = () => { if (fileInput.files.length) handleFile(fileInput.files[0]); };
+
+    function handleFile(file) {
+      preview.src = URL.createObjectURL(file);
+      preview.style.display = "block";
+      resultDiv.style.display = "none";
+      gradcam.style.display = "none";
+      loading.style.display = "block";
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      fetch("/predict", { method: "POST", body: formData })
+        .then(r => r.json())
+        .then(data => {
+          loading.style.display = "none";
+          resultDiv.style.display = "block";
+          resultDiv.className = data.low_confidence_warning ? "warn" : "ok";
+          resultDiv.innerHTML = `
+            <strong>Domain:</strong> ${data.domain} (${(data.domain_confidence*100).toFixed(1)}%)<br>
+            <strong>Defect:</strong> ${data.defect} (${(data.defect_confidence*100).toFixed(1)}%)<br>
+            ${data.message ? `<strong>Note:</strong> ${data.message}` : ""}
+          `;
+          if (data.gradcam_base64) {
+            gradcam.src = "data:image/png;base64," + data.gradcam_base64;
+            gradcam.style.display = "block";
+          }
+        })
+        .catch(err => {
+          loading.style.display = "none";
+          resultDiv.style.display = "block";
+          resultDiv.className = "warn";
+          resultDiv.innerHTML = "Error: " + err;
+        });
+    }
+  </script>
 </body>
 </html>
