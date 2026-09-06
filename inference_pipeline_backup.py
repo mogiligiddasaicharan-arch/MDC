@@ -11,9 +11,6 @@ import cv2
 import config
 from models.msa_net import MSANet
 from utils.gradcam import GradCAM, overlay_heatmap
-from torchvision import models as tv_models
-import torch.nn as nn
-import json
 
 
 class InferencePipeline:
@@ -21,37 +18,16 @@ class InferencePipeline:
         self.device = device or config.DEVICE
         self.checkpoint_dir = checkpoint_dir
 
-        v2_path = os.path.join(checkpoint_dir, "domain_classifier_v2", "best_model.pth")
-        v2_classes_path = os.path.join(checkpoint_dir, "domain_classifier_v2", "classes.json")
-        if os.path.exists(v2_path) and os.path.exists(v2_classes_path):
-            print("Loading domain_classifier_v2 (ResNet18 transfer-learning model)...")
-            with open(v2_classes_path) as f:
-                self.domain_classes = json.load(f)
-            self.domain_classifier = tv_models.resnet18(weights=None)
-            num_ftrs = self.domain_classifier.fc.in_features
-            self.domain_classifier.fc = nn.Sequential(
-                nn.Linear(num_ftrs, 256),
-                nn.ReLU(),
-                nn.Dropout(0.3),
-                nn.Linear(256, len(self.domain_classes))
-            )
-            state_dict = torch.load(v2_path, map_location=self.device)
-            self.domain_classifier.load_state_dict(state_dict)
-            self.domain_classifier.to(self.device)
-            self.domain_classifier.eval()
-            self.using_v2_domain_classifier = True
-        else:
-            self.domain_classifier, self.domain_classes = self._load_model(
-                os.path.join(checkpoint_dir, "domain_classifier", "best_model.pth")
-            )
-            self.using_v2_domain_classifier = False
+        self.domain_classifier, self.domain_classes = self._load_model(
+            os.path.join(checkpoint_dir, "domain_classifier", "best_model.pth")
+        )
 
         self.specialist_models = {}
         self.specialist_classes = {}
 
         for item in os.listdir(checkpoint_dir):
             item_path = os.path.join(checkpoint_dir, item)
-            if os.path.isdir(item_path) and item not in ("domain_classifier", "domain_classifier_v2"):
+            if os.path.isdir(item_path) and item != "domain_classifier":
                 model_path = os.path.join(item_path, "best_model.pth")
                 if os.path.exists(model_path):
                     model, classes = self._load_model(model_path)
@@ -64,11 +40,6 @@ class InferencePipeline:
             transforms.ToTensor(),
             transforms.Normalize(mean=config.NORM_MEAN, std=config.NORM_STD),
         ])
-        self.domain_transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]) if self.using_v2_domain_classifier else self.transform
 
     def _load_model(self, path):
         checkpoint = torch.load(path, map_location=self.device)
@@ -86,10 +57,9 @@ class InferencePipeline:
 
     def predict(self, image_path, save_gradcam_path=None):
         tensor, img = self.preprocess(image_path)
-        domain_tensor = self.domain_transform(img).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            domain_logits = self.domain_classifier(domain_tensor)
+            domain_logits = self.domain_classifier(tensor)
             domain_probs = F.softmax(domain_logits, dim=1)[0]
 
         domain_idx = domain_probs.argmax().item()

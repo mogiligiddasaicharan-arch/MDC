@@ -24,6 +24,7 @@ DOMAINS = [
     "mvtec_transistor", "mvtec_wood", "mvtec_zipper",
     "pcb", "pcb2", "pcb_aoi", "severstal", "solar_elpv", "solar_panel",
     "solder", "steel", "welding",
+    "other",
 ]
 
 SRC_ROOT = "datasets"
