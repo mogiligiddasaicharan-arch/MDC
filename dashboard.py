@@ -6,7 +6,7 @@ import pandas as pd
 import base64
 from datetime import datetime
 
-st.set_page_config(page_title="MDC | Defect Intelligence", layout="wide", page_icon="🛠️", initial_sidebar_state="expanded")
+st.set_page_config(page_title="SteelVision | AI Surface Inspection", layout="wide", page_icon="🔩", initial_sidebar_state="expanded")
 
 API_URL = "http://127.0.0.1:8000"
 
@@ -80,8 +80,8 @@ def confidence_gauge(value, title):
     return fig
 
 with st.sidebar:
-    st.markdown("### 🛠️ MDC Console")
-    st.caption("Manufacturing Defect Classification")
+    st.markdown("### 🔩 SteelVision Console")
+    st.caption("AI-Powered Steel Surface Inspection")
     st.divider()
     try:
         health = requests.get(f"{API_URL}/health", timeout=5).json()
@@ -113,8 +113,8 @@ with st.sidebar:
 st.markdown("""
 <div class="hero">
     <div>
-        <h1>Defect Intelligence Dashboard</h1>
-        <p>Upload a manufacturing image to route it through the domain classifier and specialist defect model.</p>
+        <h1>🔩 SteelVision — AI Surface Inspection</h1>
+        <p>Automated steel surface defect detection: crazing, inclusion, patches, pitted surface, rolled-in scale, and scratches — powered by deep learning.</p>
     </div>
 </div>
 """, unsafe_allow_html=True)

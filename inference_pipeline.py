@@ -14,6 +14,9 @@ from utils.gradcam import GradCAM, overlay_heatmap
 from torchvision import models as tv_models
 import torch.nn as nn
 import json
+from torchvision import models as tv_models
+import torch.nn as nn
+import json
 
 
 class InferencePipeline:
@@ -51,13 +54,37 @@ class InferencePipeline:
 
         for item in os.listdir(checkpoint_dir):
             item_path = os.path.join(checkpoint_dir, item)
-            if os.path.isdir(item_path) and item not in ("domain_classifier", "domain_classifier_v2"):
+            if os.path.isdir(item_path) and item not in ("domain_classifier", "domain_classifier_v2", "steel", "steel_v2"):
                 model_path = os.path.join(item_path, "best_model.pth")
                 if os.path.exists(model_path):
                     model, classes = self._load_model(model_path)
                     self.specialist_models[item] = model
                     self.specialist_classes[item] = classes
                     print(f"  Loaded specialist: {item} ({len(classes)} classes)")
+
+        steel_v2_path = os.path.join(checkpoint_dir, "steel_v2", "best_model.pth")
+        steel_v2_classes_path = os.path.join(checkpoint_dir, "steel_v2", "classes.json")
+        if os.path.exists(steel_v2_path) and os.path.exists(steel_v2_classes_path):
+            print("Loading steel_v2 (ResNet34 transfer-learning specialist)...")
+            with open(steel_v2_classes_path) as f:
+                steel_classes = json.load(f)
+            steel_model = tv_models.resnet34(weights=None)
+            num_ftrs = steel_model.fc.in_features
+            steel_model.fc = nn.Sequential(
+                nn.Linear(num_ftrs, 256),
+                nn.ReLU(),
+                nn.Dropout(0.4),
+                nn.Linear(256, len(steel_classes))
+            )
+            steel_model.load_state_dict(torch.load(steel_v2_path, map_location=self.device))
+            steel_model.to(self.device)
+            steel_model.eval()
+            self.specialist_models["steel"] = steel_model
+            self.specialist_classes["steel"] = steel_classes
+            self.steel_specialist_is_v2 = True
+            print(f"  Loaded specialist: steel (v2, ResNet34, {len(steel_classes)} classes)")
+        else:
+            self.steel_specialist_is_v2 = False
 
         self.transform = transforms.Compose([
             transforms.Resize((config.IMG_SIZE, config.IMG_SIZE)),
@@ -69,6 +96,12 @@ class InferencePipeline:
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]) if self.using_v2_domain_classifier else self.transform
+
+        self.steel_transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
 
     def _load_model(self, path):
         checkpoint = torch.load(path, map_location=self.device)
@@ -89,7 +122,7 @@ class InferencePipeline:
         domain_tensor = self.domain_transform(img).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            domain_logits = self.domain_classifier(domain_tensor)
+            domain_logits = self.domain_classifier(tensor)
             domain_probs = F.softmax(domain_logits, dim=1)[0]
 
         domain_idx = domain_probs.argmax().item()
